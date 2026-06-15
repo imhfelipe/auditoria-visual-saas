@@ -106,6 +106,20 @@ A integração segue 4 etapas:
 7. Na seção **"🤖 Análise Inteligente por IA"**, clique em **"🧠 Gerar Análise Inteligente"** para obter insights da LLM
 8. Compare os dados brutos na aba **"📦 Dados Brutos (JSON)"** com a análise gerada
 
+## 🚀 Como Publicar / Deploy
+
+A forma mais simples de subir e hospedar a aplicação gratuitamente é através do **Streamlit Community Cloud**:
+
+1. Acesse o [Streamlit Share](https://share.streamlit.io/) e faça login com sua conta do GitHub.
+2. Clique em **"Create App"** (ou **"New App"**).
+3. Selecione o repositório correspondente: `imhfelipe/auditoria-visual-saas`.
+4. Defina a branch como `main` e o arquivo principal como `app.py`.
+5. Abra o painel de **Secrets** (Configurações do App) no Streamlit Cloud e insira a chave da API Groq no formato TOML:
+   ```toml
+   GROQ_API_KEY = "sua_chave_gsk_aqui"
+   ```
+6. Clique em **"Deploy!"**. O Streamlit irá compilar as dependências de `requirements.txt` e disponibilizar o site em um subdomínio público em poucos minutos.
+
 ## 📄 Licença
 
 MIT License
