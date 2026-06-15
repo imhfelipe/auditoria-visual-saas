@@ -761,6 +761,23 @@ def main():
     # ── Tela de espera ──────────────────────────────────────────────────────
     if not iniciar:
         st_html(html_welcome())
+        
+        # Status da IA Generativa na Tela Inicial
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        st_html(html_panel_header("IA Generativa", "Análise inteligente via LLM"))
+        
+        api_key = carregar_credenciais()
+        if not api_key:
+            st_html(html_insight_card(
+                "warn", "API Groq não configurada",
+                "Crie um arquivo .env com GROQ_API_KEY=sua_chave — Obtenha em console.groq.com"
+            ))
+        else:
+            st_html(html_insight_card(
+                "ok", "API Groq ativa",
+                "Modelo Llama-3.3-70b-versatile pronto para gerar análises operacionais após o processamento do vídeo."
+            ))
+            
         st_html(html_footer())
         return
 

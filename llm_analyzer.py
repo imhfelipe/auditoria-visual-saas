@@ -38,15 +38,27 @@ TIMEOUT_SEGUNDOS = 30
 
 def carregar_credenciais() -> str | None:
     """
-    Carrega a chave da API Groq de variáveis de ambiente ou .env.
+    Carrega a chave da API Groq de variáveis de ambiente, .env ou Streamlit Secrets.
     Retorna None se não encontrada.
     """
+    # 1. Tentar carregar de Streamlit Secrets (Cloud Deploy)
+    try:
+        import streamlit as st
+        if "GROQ_API_KEY" in st.secrets:
+            key = st.secrets["GROQ_API_KEY"]
+            if key:
+                logger.info("GROQ_API_KEY carregada com sucesso do Streamlit Secrets.")
+                return key
+    except Exception:
+        pass
+
+    # 2. Tentar carregar de .env ou variáveis de ambiente
     load_dotenv()
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         logger.warning("GROQ_API_KEY não encontrada nas variáveis de ambiente.")
         return None
-    logger.info("GROQ_API_KEY carregada com sucesso.")
+    logger.info("GROQ_API_KEY carregada com sucesso do ambiente.")
     return api_key
 
 
