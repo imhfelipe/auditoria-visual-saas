@@ -52,13 +52,20 @@ def carregar_credenciais() -> str | None:
     except Exception:
         pass
 
-    # 2. Tentar carregar de .env ou variáveis de ambiente
-    load_dotenv()
+    # 2. Tentar carregar de .env ou variáveis de ambiente (com caminho absoluto e override)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    env_path = os.path.join(base_dir, ".env")
+    
+    if os.path.exists(env_path):
+        load_dotenv(dotenv_path=env_path, override=True)
+    else:
+        load_dotenv(override=True)
+        
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        logger.warning("GROQ_API_KEY não encontrada nas variáveis de ambiente.")
+        logger.warning(f"GROQ_API_KEY não encontrada no ambiente (procurou em: {env_path})")
         return None
-    logger.info("GROQ_API_KEY carregada com sucesso do ambiente.")
+    logger.info("GROQ_API_KEY carregada com sucesso.")
     return api_key
 
 
