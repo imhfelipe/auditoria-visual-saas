@@ -11,8 +11,18 @@
 #
 # ============================================================================
 
+import sys
+import subprocess
+
+# Auto-instalação e correção de dependências do OpenCV headless no Streamlit Cloud
+try:
+    import cv2
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python", "opencv-python-headless"], stdout=subprocess.DEVNULL)
+    subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless"], stdout=subprocess.DEVNULL)
+    import cv2
+
 import streamlit as st
-import cv2
 import numpy as np
 import pandas as pd
 import tempfile
