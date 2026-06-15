@@ -2,6 +2,11 @@
 __pycache__/
 *.py[cod]
 *.pyo
+
+# Dependências Node
+node_modules/
+dist/
+*.pyo
 *.egg-info/
 dist/
 build/
@@ -37,6 +42,9 @@ desktop.ini
 
 # Logs
 *.log
+
+# Credenciais
+.env
 
 # Temporários
 *.tmp

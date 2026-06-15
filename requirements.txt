@@ -4,3 +4,5 @@ opencv-python-headless
 pandas
 numpy
 lapx
+groq
+python-dotenv
