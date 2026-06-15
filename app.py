@@ -758,8 +758,21 @@ def main():
         </div>
         """)
 
+    # ── Session State Inicialização ──────────────────────────────────────────
+    if "audit_iniciado" not in st.session_state:
+        st.session_state.audit_iniciado = False
+    if "resultado_c2" not in st.session_state:
+        st.session_state.resultado_c2 = None
+    if "resultado_llm" not in st.session_state:
+        st.session_state.resultado_llm = None
+
+    if iniciar:
+        st.session_state.audit_iniciado = True
+        st.session_state.resultado_c2 = None
+        st.session_state.resultado_llm = None
+
     # ── Tela de espera ──────────────────────────────────────────────────────
-    if not iniciar:
+    if not st.session_state.audit_iniciado:
         st_html(html_welcome())
         
         # Status da IA Generativa na Tela Inicial
@@ -792,212 +805,230 @@ def main():
         st.error("❌ ROI inválida: mínimos devem ser menores que máximos.")
         return
 
-    # ── Salvar vídeo temporário ─────────────────────────────────────────────
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-        tmp.write(arquivo_video.read())
-        caminho_video = tmp.name
+    api_key = carregar_credenciais()
 
-    cap = cv2.VideoCapture(caminho_video)
-    if not cap.isOpened():
-        st.error("❌ Falha ao abrir o vídeo.")
-        return
+    # ── Orquestração de Execução com Session State ───────────────────────────
+    if st.session_state.resultado_c2 is None:
+        # ── Salvar vídeo temporário ─────────────────────────────────────────────
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+            tmp.write(arquivo_video.read())
+            caminho_video = tmp.name
 
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    largura = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    altura = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    duracao = total_frames / fps
+        cap = cv2.VideoCapture(caminho_video)
+        if not cap.isOpened():
+            st.error("❌ Falha ao abrir o vídeo.")
+            return
 
-    rx1, rx2 = int(largura * roi_x_min / 100), int(largura * roi_x_max / 100)
-    ry1, ry2 = int(altura * roi_y_min / 100), int(altura * roi_y_max / 100)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        largura = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        altura = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        duracao = total_frames / fps
 
-    # ── Carregar modelo ─────────────────────────────────────────────────────
-    with st.spinner("⚡ Carregando YOLOv8 Nano..."):
-        modelo = carregar_modelo()
+        rx1, rx2 = int(largura * roi_x_min / 100), int(largura * roi_x_max / 100)
+        ry1, ry2 = int(altura * roi_y_min / 100), int(altura * roi_y_max / 100)
 
-    # ── Info do vídeo ───────────────────────────────────────────────────────
-    cols_info = st.columns(4)
-    cols_info[0].metric("Resolução", f"{largura}×{altura}")
-    cols_info[1].metric("FPS", f"{fps:.1f}")
-    cols_info[2].metric("Duração", formatar_tempo(duracao))
-    cols_info[3].metric("Classes", f"{len(classes_selecionadas)}")
+        # ── Carregar modelo ─────────────────────────────────────────────────────
+        with st.spinner("⚡ Carregando YOLOv8 Nano..."):
+            modelo = carregar_modelo()
 
-    # ── Layout de processamento ─────────────────────────────────────────────
-    col_video, col_metricas = st.columns([3, 2], gap="large")
+        # ── Info do vídeo ───────────────────────────────────────────────────────
+        cols_info = st.columns(4)
+        cols_info[0].metric("Resolução", f"{largura}×{altura}")
+        cols_info[1].metric("FPS", f"{fps:.1f}")
+        cols_info[2].metric("Duração", formatar_tempo(duracao))
+        cols_info[3].metric("Classes", f"{len(classes_selecionadas)}")
 
-    with col_video:
-        st_html(html_panel_header("Feed ao vivo", "Detecção & Rastreamento"))
-        ph_frame = st.empty()
+        # ── Layout de processamento ─────────────────────────────────────────────
+        col_video, col_metricas = st.columns([3, 2], gap="large")
 
-    with col_metricas:
-        st_html(html_panel_header("Métricas", "ROI · em tempo real"))
-        n_classes = len(classes_selecionadas)
-        cols_metric = st.columns(min(n_classes, 3))
-        ph_metrics: dict[str, any] = {}
-        for i, nome in enumerate(classes_selecionadas):
-            with cols_metric[i % min(n_classes, 3)]:
-                ph_metrics[nome] = st.empty()
+        with col_video:
+            st_html(html_panel_header("Feed ao vivo", "Detecção & Rastreamento"))
+            ph_frame = st.empty()
 
-        st.markdown("---")
-        st_html(html_panel_header("Série temporal", "Ocupação da ROI"))
-        ph_grafico = st.empty()
+        with col_metricas:
+            st_html(html_panel_header("Métricas", "ROI · em tempo real"))
+            n_classes = len(classes_selecionadas)
+            cols_metric = st.columns(min(n_classes, 3))
+            ph_metrics: dict[str, any] = {}
+            for i, nome in enumerate(classes_selecionadas):
+                with cols_metric[i % min(n_classes, 3)]:
+                    ph_metrics[nome] = st.empty()
 
-    barra = st.progress(0, text="Preparando auditoria...")
+            st.markdown("---")
+            st_html(html_panel_header("Série temporal", "Ocupação da ROI"))
+            ph_grafico = st.empty()
 
-    # ════════════════════════════════════════════════════════════════════════
-    # 📦 ESTRUTURAS DE DADOS
-    # ════════════════════════════════════════════════════════════════════════
-    unicos_por_classe: dict[str, set] = {n: set() for n in classes_selecionadas}
-    todos_detectados: dict[str, set] = {n: set() for n in classes_selecionadas}
-    historico: list[dict] = []
-    picos: dict[str, dict] = {n: {"valor": 0, "segundo": 0.0} for n in classes_selecionadas}
+        barra = st.progress(0, text="Preparando auditoria...")
 
-    # Cores para gráfico
-    colunas_roi = [f"{n} (ROI)" for n in classes_selecionadas]
+        # 📦 ESTRUTURAS DE DADOS
+        unicos_por_classe: dict[str, set] = {n: set() for n in classes_selecionadas}
+        todos_detectados: dict[str, set] = {n: set() for n in classes_selecionadas}
+        historico: list[dict] = []
+        picos: dict[str, dict] = {n: {"valor": 0, "segundo": 0.0} for n in classes_selecionadas}
+
+        # Cores para gráfico
+        colunas_roi = [f"{n} (ROI)" for n in classes_selecionadas]
+        cores_hex = []
+        for n in classes_selecionadas:
+            cores_hex.append(MAPA_CLASSES.get(NOME_PARA_ID.get(n, -1), {}).get("hex", "#94a3b8"))
+
+        # 🔄 LOOP DE PROCESSAMENTO
+        frame_idx = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            frame_idx += 1
+            seg_atual = frame_idx / fps
+
+            resultados = modelo.track(
+                frame, persist=True, classes=ids_selecionados,
+                verbose=False, conf=0.45, imgsz=640
+            )[0]
+
+            contagem_frame: dict[str, int] = {n: 0 for n in classes_selecionadas}
+
+            if resultados.boxes is not None and len(resultados.boxes) > 0:
+                boxes = resultados.boxes
+                ids_disponiveis = boxes.id is not None
+
+                for i in range(len(boxes)):
+                    if not ids_disponiveis:
+                        continue
+                    try:
+                        id_obj = int(boxes.id[i])
+                    except (IndexError, TypeError, AttributeError):
+                        continue
+
+                    xyxy = boxes.xyxy[i].cpu().numpy()
+                    x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
+                    cls_id = int(boxes.cls[i].cpu().item())
+
+                    if cls_id not in MAPA_CLASSES:
+                        continue
+                    info_cls = MAPA_CLASSES[cls_id]
+                    nome_cls = info_cls["nome"]
+                    if nome_cls not in classes_selecionadas:
+                        continue
+
+                    todos_detectados[nome_cls].add(id_obj)
+                    cx = int((x1 + x2) / 2)
+                    cy = y2
+                    dentro_roi = (rx1 <= cx <= rx2 and ry1 <= cy <= ry2)
+
+                    if dentro_roi:
+                        contagem_frame[nome_cls] += 1
+                        unicos_por_classe[nome_cls].add(id_obj)
+
+                    frame = desenhar_bbox(frame, x1, y1, x2, y2,
+                                          id_obj, nome_cls, info_cls["cor_bgr"], dentro_roi)
+
+            frame = desenhar_roi(frame, rx1, ry1, rx2, ry2)
+            frame = adicionar_hud(frame, contagem_frame, frame_idx, fps, classes_selecionadas)
+
+            for nome, qtd in contagem_frame.items():
+                if qtd > picos[nome]["valor"]:
+                    picos[nome]["valor"] = qtd
+                    picos[nome]["segundo"] = seg_atual
+
+            if frame_idx % 30 == 0:
+                gc.collect()
+
+            registro = {"frame": frame_idx, "segundo": round(seg_atual, 2), "timestamp": formatar_tempo(seg_atual)}
+            for nome in classes_selecionadas:
+                registro[f"{nome} (ROI)"] = contagem_frame[nome]
+                registro[f"{nome} (Únicos)"] = len(unicos_por_classe[nome])
+            historico.append(registro)
+
+            is_ultimo = (frame_idx >= total_frames)
+
+            if frame_idx % 5 == 0 or is_ultimo:
+                h_f, w_f = frame.shape[:2]
+                if w_f > 960:
+                    escala = 960 / w_f
+                    frame_small = cv2.resize(frame, (960, int(h_f * escala)), interpolation=cv2.INTER_AREA)
+                else:
+                    frame_small = frame
+                frame_rgb = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
+                ph_frame.image(frame_rgb, channels="RGB", use_container_width=True)
+
+            if frame_idx % 5 == 0 or is_ultimo:
+                for nome in classes_selecionadas:
+                    info = MAPA_CLASSES.get(NOME_PARA_ID.get(nome, -1), {})
+                    ph_metrics[nome].metric(
+                        nome, f"{contagem_frame[nome]} na ROI",
+                        delta=f"{len(unicos_por_classe[nome])} únicos",
+                    )
+
+            if frame_idx % 20 == 0 or is_ultimo:
+                df_parcial = pd.DataFrame(historico)
+                if len(df_parcial) > 120:
+                    step = len(df_parcial) // 120
+                    df_chart = df_parcial.iloc[::step]
+                else:
+                    df_chart = df_parcial
+                ph_grafico.line_chart(
+                    df_chart.set_index("segundo")[colunas_roi],
+                    color=cores_hex, use_container_width=True,
+                )
+                del df_parcial, df_chart
+
+            if frame_idx % 10 == 0 or is_ultimo:
+                prog = min(frame_idx / max(total_frames, 1), 1.0)
+                barra.progress(prog, text=f"frame {frame_idx:,}/{total_frames:,} · {prog*100:.1f}%")
+
+        # ── Limpeza ─────────────────────────────────────────────────────────────
+        cap.release()
+        try:
+            os.unlink(caminho_video)
+        except OSError:
+            pass
+        barra.empty()
+        ph_frame.empty()
+
+        # Coletar resultado final C2
+        resultado_c2 = coletar_resultados_c2(
+            largura, altura, fps, duracao, total_frames,
+            classes_selecionadas, roi_x_min, roi_x_max, roi_y_min, roi_y_max,
+            unicos_por_classe, todos_detectados, picos, historico,
+        )
+        st.session_state.resultado_c2 = resultado_c2
+        
+        # ── ANÁLISE IA AUTOMÁTICA ────────────────────────────────────────────
+        if api_key:
+            with st.spinner("🧠 Gerando Análise Inteligente com IA (Groq Llama-3.3)..."):
+                st.session_state.resultado_llm = analisar_com_llm(resultado_c2)
+
+    # ── Recuperar do Session State se já processado ──────────────────────────
+    resultado_c2 = st.session_state.resultado_c2
+    df_final = resultado_c2["historico_df"]
+    classes_selecionadas = resultado_c2["classes_auditadas"]
+    duracao = resultado_c2["video_info"]["duracao_s"]
+    total_frames = resultado_c2["video_info"]["total_frames"]
+    fps = resultado_c2["video_info"]["fps"]
+
     cores_hex = []
     for n in classes_selecionadas:
         cores_hex.append(MAPA_CLASSES.get(NOME_PARA_ID.get(n, -1), {}).get("hex", "#94a3b8"))
 
     # ════════════════════════════════════════════════════════════════════════
-    # 🔄 LOOP DE PROCESSAMENTO
-    # ════════════════════════════════════════════════════════════════════════
-    frame_idx = 0
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        frame_idx += 1
-        seg_atual = frame_idx / fps
-
-        resultados = modelo.track(
-            frame, persist=True, classes=ids_selecionados,
-            verbose=False, conf=0.45, imgsz=640
-        )[0]
-
-        contagem_frame: dict[str, int] = {n: 0 for n in classes_selecionadas}
-
-        if resultados.boxes is not None and len(resultados.boxes) > 0:
-            boxes = resultados.boxes
-            ids_disponiveis = boxes.id is not None
-
-            for i in range(len(boxes)):
-                if not ids_disponiveis:
-                    continue
-                try:
-                    id_obj = int(boxes.id[i])
-                except (IndexError, TypeError, AttributeError):
-                    continue
-
-                xyxy = boxes.xyxy[i].cpu().numpy()
-                x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
-                cls_id = int(boxes.cls[i].cpu().item())
-
-                if cls_id not in MAPA_CLASSES:
-                    continue
-                info_cls = MAPA_CLASSES[cls_id]
-                nome_cls = info_cls["nome"]
-                if nome_cls not in classes_selecionadas:
-                    continue
-
-                todos_detectados[nome_cls].add(id_obj)
-                cx = int((x1 + x2) / 2)
-                cy = y2
-                dentro_roi = (rx1 <= cx <= rx2 and ry1 <= cy <= ry2)
-
-                if dentro_roi:
-                    contagem_frame[nome_cls] += 1
-                    unicos_por_classe[nome_cls].add(id_obj)
-
-                frame = desenhar_bbox(frame, x1, y1, x2, y2,
-                                      id_obj, nome_cls, info_cls["cor_bgr"], dentro_roi)
-
-        frame = desenhar_roi(frame, rx1, ry1, rx2, ry2)
-        frame = adicionar_hud(frame, contagem_frame, frame_idx, fps, classes_selecionadas)
-
-        for nome, qtd in contagem_frame.items():
-            if qtd > picos[nome]["valor"]:
-                picos[nome]["valor"] = qtd
-                picos[nome]["segundo"] = seg_atual
-
-        if frame_idx % 30 == 0:
-            gc.collect()
-
-        registro = {"frame": frame_idx, "segundo": round(seg_atual, 2), "timestamp": formatar_tempo(seg_atual)}
-        for nome in classes_selecionadas:
-            registro[f"{nome} (ROI)"] = contagem_frame[nome]
-            registro[f"{nome} (Únicos)"] = len(unicos_por_classe[nome])
-        historico.append(registro)
-
-        is_ultimo = (frame_idx >= total_frames)
-
-        if frame_idx % 5 == 0 or is_ultimo:
-            h_f, w_f = frame.shape[:2]
-            if w_f > 960:
-                escala = 960 / w_f
-                frame_small = cv2.resize(frame, (960, int(h_f * escala)), interpolation=cv2.INTER_AREA)
-            else:
-                frame_small = frame
-            frame_rgb = cv2.cvtColor(frame_small, cv2.COLOR_BGR2RGB)
-            ph_frame.image(frame_rgb, channels="RGB", use_container_width=True)
-
-        if frame_idx % 5 == 0 or is_ultimo:
-            for nome in classes_selecionadas:
-                info = MAPA_CLASSES.get(NOME_PARA_ID.get(nome, -1), {})
-                ph_metrics[nome].metric(
-                    nome, f"{contagem_frame[nome]} na ROI",
-                    delta=f"{len(unicos_por_classe[nome])} únicos",
-                )
-
-        if frame_idx % 20 == 0 or is_ultimo:
-            df_parcial = pd.DataFrame(historico)
-            if len(df_parcial) > 120:
-                step = len(df_parcial) // 120
-                df_chart = df_parcial.iloc[::step]
-            else:
-                df_chart = df_parcial
-            ph_grafico.line_chart(
-                df_chart.set_index("segundo")[colunas_roi],
-                color=cores_hex, use_container_width=True,
-            )
-            del df_parcial, df_chart
-
-        if frame_idx % 10 == 0 or is_ultimo:
-            prog = min(frame_idx / max(total_frames, 1), 1.0)
-            barra.progress(prog, text=f"frame {frame_idx:,}/{total_frames:,} · {prog*100:.1f}%")
-
-    # ── Limpeza ─────────────────────────────────────────────────────────────
-    cap.release()
-    try:
-        os.unlink(caminho_video)
-    except OSError:
-        pass
-    barra.empty()
-    ph_frame.empty()
-
-    resultado_c2 = coletar_resultados_c2(
-        largura, altura, fps, duracao, total_frames,
-        classes_selecionadas, roi_x_min, roi_x_max, roi_y_min, roi_y_max,
-        unicos_por_classe, todos_detectados, picos, historico,
-    )
-
-    # ════════════════════════════════════════════════════════════════════════
     # 📋 RELATÓRIO — VisionAudit Design
     # ════════════════════════════════════════════════════════════════════════
-    df_final = pd.DataFrame(historico)
-
     st_html(html_panel_header("Relatório", "Métricas por classe"))
 
     ranking_volume: list[tuple[str, int]] = []
     report_cols = st.columns(min(len(classes_selecionadas), 3))
 
     for i, nome in enumerate(classes_selecionadas):
-        total_unicos = len(unicos_por_classe[nome])
-        total_det = len(todos_detectados[nome])
-        pico_val = picos[nome]["valor"]
-        pico_seg = picos[nome]["segundo"]
-        taxa = (total_unicos / total_det * 100) if total_det > 0 else 0.0
+        metrics = resultado_c2["metricas_por_classe"][nome]
+        total_unicos = metrics["unicos_roi"]
+        total_det = metrics["total_detectados"]
+        pico_val = metrics["pico_simultaneo"]
+        pico_seg = metrics["pico_segundo"]
+        taxa = metrics["taxa_entrada_roi_pct"]
         ranking_volume.append((nome, total_unicos))
         info = MAPA_CLASSES.get(NOME_PARA_ID.get(nome, -1), {})
 
@@ -1041,8 +1072,8 @@ def main():
 
     veiculos = [c for c in ["Carro", "Moto", "Ônibus", "Caminhão", "Bicicleta"] if c in classes_selecionadas]
     if "Pessoa" in classes_selecionadas and veiculos:
-        total_veic = sum(len(unicos_por_classe[v]) for v in veiculos)
-        total_ped = len(unicos_por_classe["Pessoa"])
+        total_veic = sum(resultado_c2["metricas_por_classe"][v]["unicos_roi"] for v in veiculos)
+        total_ped = resultado_c2["metricas_por_classe"]["Pessoa"]["unicos_roi"]
         if total_ped > 0 and total_veic > 0:
             ratio = total_veic / total_ped
             nivel = "ALTO" if ratio > 0.7 else "MODERADO" if ratio > 0.25 else "BAIXO"
@@ -1082,7 +1113,6 @@ def main():
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     st_html(html_panel_header("IA Generativa", "Análise inteligente via LLM"))
 
-    api_key = carregar_credenciais()
     if not api_key:
         st_html(html_insight_card(
             "warn", "API Groq não configurada",
@@ -1096,11 +1126,8 @@ def main():
             st.json(dados_exibicao, expanded=True)
 
         with tab_analise:
-            if st.button("🧠  Gerar Análise Inteligente", type="primary",
-                         help="Envia dados para a LLM", key="btn_llm"):
-                with st.spinner("Analisando com IA... ~10 segundos"):
-                     resultado_llm = analisar_com_llm(resultado_c2)
-
+            resultado_llm = st.session_state.resultado_llm
+            if resultado_llm is not None:
                 if resultado_llm["sucesso"]:
                     mc1, mc2, mc3 = st.columns(3)
                     mc1.metric("Modelo", resultado_llm["modelo"])
@@ -1113,6 +1140,13 @@ def main():
                         "warn", "Falha na análise",
                         f"{resultado_llm['erro']} — Os dados brutos continuam disponíveis na aba Dados Brutos."
                     ))
+            else:
+                if st.button("🧠  Gerar Análise Inteligente Manual", type="primary",
+                             help="Envia dados para a LLM", key="btn_llm_manual"):
+                    with st.spinner("Analisando com IA... ~10 segundos"):
+                        resultado_llm = analisar_com_llm(resultado_c2)
+                        st.session_state.resultado_llm = resultado_llm
+                    st.rerun()
 
     # ── Footer ──────────────────────────────────────────────────────────────
     st_html(html_footer())
