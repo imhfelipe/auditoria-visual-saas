@@ -207,6 +207,18 @@ st.markdown("""
     .stJson {
         font-family: 'JetBrains Mono', monospace !important;
     }
+
+    /* AI Generated Text & Markdown styling for contrast */
+    div[data-baseweb="tab-panel"] p,
+    div[data-baseweb="tab-panel"] li,
+    div[data-baseweb="tab-panel"] td,
+    div[data-baseweb="tab-panel"] th,
+    div[data-baseweb="tab-panel"] h1,
+    div[data-baseweb="tab-panel"] h2,
+    div[data-baseweb="tab-panel"] h3,
+    div[data-baseweb="tab-panel"] h4 {
+        color: #ffffff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1047,15 +1059,15 @@ def main():
             color=cores_hex, use_container_width=True,
         )
 
-    # ── Insights Heurísticos ───────────────────────────────────────────────
-    st_html(html_panel_header("IA Heurística", "Correlações & Insights"))
+    # ── Sugestões e Heurísticas ─────────────────────────────────────────────
+    st_html(html_panel_header("Sugestões e Heurísticas", "Recomendações Operacionais"))
 
     ranking_volume.sort(key=lambda x: x[1], reverse=True)
     if ranking_volume and ranking_volume[0][1] > 0:
         lider = ranking_volume[0]
         st_html(html_insight_card(
-            "info", "Classe dominante",
-            f"{lider[0]} liderou o tráfego na ROI com {lider[1]} indivíduos únicos."
+            "info", "Sugestão: Redirecionamento de Fluxo",
+            f"Como {lider[0]} foi a classe dominante com {lider[1]} indivíduos únicos na ROI, sugere-se estruturar o layout físico e a alocação de equipe priorizando este fluxo."
         ))
 
     if "Pessoa" in classes_selecionadas and "Celular" in classes_selecionadas:
@@ -1066,8 +1078,8 @@ def main():
             if len(picos_simult) > 0:
                 pct = (len(picos_simult) / len(df_final)) * 100
                 st_html(html_insight_card(
-                    "warn", "Correlação Pessoa × Celular",
-                    f"Em {pct:.1f}% dos frames houve pico simultâneo — possível zona de espera ou uso intenso de dispositivos."
+                    "warn", "Sugestão: Prevenção de Distrações",
+                    f"Em {pct:.1f}% do tempo houve pico simultâneo de pessoas com celulares. Sugere-se implantar faixas de atenção visual ou restrições ao uso de telas para mitigar riscos de acidentes."
                 ))
 
     veiculos = [c for c in ["Carro", "Moto", "Ônibus", "Caminhão", "Bicicleta"] if c in classes_selecionadas]
@@ -1078,9 +1090,10 @@ def main():
             ratio = total_veic / total_ped
             nivel = "ALTO" if ratio > 0.7 else "MODERADO" if ratio > 0.25 else "BAIXO"
             kind = "warn" if ratio > 0.7 else "info" if ratio > 0.25 else "ok"
+            sugestao_transito = "recomenda-se implantar barreiras físicas de contenção e faixas segregadas imediatamente." if ratio > 0.7 else "manter monitoramento de rotina e manter vias limpas."
             st_html(html_insight_card(
-                kind, f"Conflito Pedestre × Veículo · {nivel}",
-                f"Índice = {ratio:.2f}. {'Avaliar sinalização e faixa segregada.' if ratio > 0.7 else 'Convivência dentro de parâmetros aceitáveis.'}"
+                kind, f"Sugestão: Mitigação de Riscos de Tráfego (Risco {nivel})",
+                f"Índice de conflito pedestre-veículo está em {ratio:.2f}. Com base nisso, {sugestao_transito}"
             ))
 
     # ── Resumo global ──────────────────────────────────────────────────────
